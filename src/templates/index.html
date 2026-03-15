@@ -24,18 +24,18 @@
     <section class="card form-card">
       <form id="risk-form">
         <div class="grid">
-          <label>年龄<input name="age" type="number" min="1" max="120" step="1" required></label>
-          <label>性别(男=1 女=0)<input name="sex" type="number" min="0" max="1" step="1" required></label>
-          <label>收缩压<input name="systolic_bp" type="number" step="1" required></label>
-          <label>舒张压<input name="diastolic_bp" type="number" step="1"></label>
-          <label>BMI<input name="bmi" type="number" step="0.1"></label>
-          <label>总胆固醇<input name="total_cholesterol" type="number" step="0.1"></label>
-          <label>空腹血糖<input name="fasting_glucose" type="number" step="0.1"></label>
-          <label>是否吸烟(1/0)<input name="smoker" type="number" min="0" max="1" step="1"></label>
-          <label>是否饮酒(1/0)<input name="alcohol" type="number" min="0" max="1" step="1"></label>
-          <label>是否运动(1/0)<input name="active" type="number" min="0" max="1" step="1"></label>
-          <label>糖尿病史(1/0)<input name="diabetes_history" type="number" min="0" max="1" step="1"></label>
-          <label>高血压史(1/0)<input name="hypertension_history" type="number" min="0" max="1" step="1"></label>
+          <label>年龄<input name="age" type="number" min="1" max="120" step="1" value="35" required></label>
+          <label>性别(男=1 女=0)<input name="sex" type="number" min="0" max="1" step="1" value="0" required></label>
+          <label>收缩压<input name="systolic_bp" type="number" step="1" value="118" required></label>
+          <label>舒张压<input name="diastolic_bp" type="number" step="1" value="76"></label>
+          <label>BMI<input name="bmi" type="number" step="0.1" value="22.3"></label>
+          <label>总胆固醇<input name="total_cholesterol" type="number" step="0.1" value="175"></label>
+          <label>空腹血糖<input name="fasting_glucose" type="number" step="0.1" value="92"></label>
+          <label>是否吸烟(1/0)<input name="smoker" type="number" min="0" max="1" step="1" value="0"></label>
+          <label>是否饮酒(1/0)<input name="alcohol" type="number" min="0" max="1" step="1" value="0"></label>
+          <label>是否运动(1/0)<input name="active" type="number" min="0" max="1" step="1" value="1"></label>
+          <label>糖尿病史(1/0)<input name="diabetes_history" type="number" min="0" max="1" step="1" value="0"></label>
+          <label>高血压史(1/0)<input name="hypertension_history" type="number" min="0" max="1" step="1" value="0"></label>
         </div>
         <p id="form-error" class="error hidden"></p>
         <button type="submit" id="submit-btn">立即评估</button>
