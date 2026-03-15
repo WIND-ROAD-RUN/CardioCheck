@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CardioCheck 风险评估</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <div class="bg-orb orb-a"></div>
+  <div class="bg-orb orb-b"></div>
+
+  <main class="layout">
+    <section class="card intro">
+      <p class="kicker">CardioCheck Prototype</p>
+      <h1>心血管风险即时评估</h1>
+      <p class="subtitle">输入体检和生活方式指标，实时返回风险概率与分层建议。</p>
+      <div class="threshold-chip">阈值：low &lt; {{ low_threshold }}，medium &lt; {{ high_threshold }}，其余为 high</div>
+    </section>
+
+    <section class="card form-card">
+      <form id="risk-form">
+        <div class="grid">
+          <label>年龄<input name="age" type="number" min="1" max="120" step="1" required></label>
+          <label>性别(男=1 女=0)<input name="sex" type="number" min="0" max="1" step="1" required></label>
+          <label>收缩压<input name="systolic_bp" type="number" step="1" required></label>
+          <label>舒张压<input name="diastolic_bp" type="number" step="1"></label>
+          <label>BMI<input name="bmi" type="number" step="0.1"></label>
+          <label>总胆固醇<input name="total_cholesterol" type="number" step="0.1"></label>
+          <label>空腹血糖<input name="fasting_glucose" type="number" step="0.1"></label>
+          <label>是否吸烟(1/0)<input name="smoker" type="number" min="0" max="1" step="1"></label>
+          <label>是否饮酒(1/0)<input name="alcohol" type="number" min="0" max="1" step="1"></label>
+          <label>是否运动(1/0)<input name="active" type="number" min="0" max="1" step="1"></label>
+          <label>糖尿病史(1/0)<input name="diabetes_history" type="number" min="0" max="1" step="1"></label>
+          <label>高血压史(1/0)<input name="hypertension_history" type="number" min="0" max="1" step="1"></label>
+        </div>
+        <button type="submit" id="submit-btn">立即评估</button>
+      </form>
+    </section>
+
+    <section class="card result-card" id="result-card" aria-live="polite">
+      <h2>评估结果</h2>
+      <p class="muted">提交后显示实时预测结果</p>
+      <div id="result-content"></div>
+    </section>
+  </main>
+
+  <script>
+    const form = document.getElementById('risk-form');
+    const resultCard = document.getElementById('result-card');
+    const resultContent = document.getElementById('result-content');
+    const submitBtn = document.getElementById('submit-btn');
+
+    function parseValue(v) {
+      if (v === '' || v === null || v === undefined) return null;
+      const n = Number(v);
+      return Number.isNaN(n) ? null : n;
+    }
+
+    function levelText(level) {
+      if (level === 'low') return '低风险';
+      if (level === 'medium') return '中风险';
+      return '高风险';
+    }
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      submitBtn.disabled = true;
+      submitBtn.textContent = '评估中...';
+
+      const fd = new FormData(form);
+      const payload = {};
+      for (const [k, v] of fd.entries()) {
+        const parsed = parseValue(v);
+        if (parsed !== null) payload[k] = parsed;
+      }
+      payload.dataset_source = 'user_input';
+
+      try {
+        const res = await fetch('/api/predict', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.error || '预测失败');
+        }
+
+        const pct = (data.risk_probability * 100).toFixed(2);
+        resultCard.classList.add('visible');
+        resultContent.innerHTML = `
+          <div class="level level-${data.risk_level}">${levelText(data.risk_level)}</div>
+          <div class="score">风险概率 <strong>${pct}%</strong></div>
+          <p class="advice">${data.risk_message}</p>
+        `;
+      } catch (err) {
+        resultCard.classList.add('visible');
+        resultContent.innerHTML = `<p class="error">${err.message}</p>`;
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = '立即评估';
+      }
+    });
+  </script>
+</body>
+</html>

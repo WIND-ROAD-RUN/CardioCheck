@@ -1,0 +1,4 @@
+age,sex,systolic_bp,diastolic_bp,bmi,total_cholesterol,fasting_glucose,smoker,alcohol,active,diabetes_history,hypertension_history,dataset_source
+46,1,145,92,28.4,230,108,1,0,0,0,1,user_input
+35,0,118,74,22.1,178,88,0,0,1,0,0,user_input
+59,1,162,98,31.5,255,132,1,1,0,1,1,user_input

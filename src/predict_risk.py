@@ -14,11 +14,16 @@ DEFAULT_METADATA_PATH = "model/cardio_risk_multisource_ensemble_meta.json"
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="CardioCheck 风险预测接口")
-    parser.add_argument(
+    input_group = parser.add_mutually_exclusive_group(required=True)
+    input_group.add_argument(
         "--input-json",
         type=str,
-        required=True,
         help="输入 JSON 文件路径，支持单条对象或对象数组",
+    )
+    input_group.add_argument(
+        "--input-csv",
+        type=str,
+        help="输入 CSV 文件路径，适用于批量预测",
     )
     parser.add_argument(
         "--model-path",
@@ -38,6 +43,24 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="可选，预测输出 JSON 保存路径",
     )
+    parser.add_argument(
+        "--output-csv",
+        type=str,
+        default=None,
+        help="可选，预测输出 CSV 保存路径",
+    )
+    parser.add_argument(
+        "--low-threshold",
+        type=float,
+        default=0.33,
+        help="low 与 medium 的分界阈值，默认 0.33",
+    )
+    parser.add_argument(
+        "--high-threshold",
+        type=float,
+        default=0.66,
+        help="medium 与 high 的分界阈值，默认 0.66",
+    )
     return parser.parse_args()
 
 
@@ -45,6 +68,13 @@ def load_json(path: Path) -> Any:
     if not path.exists():
         raise FileNotFoundError(f"输入 JSON 不存在: {path}")
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def load_csv(path: Path) -> list[dict[str, Any]]:
+    if not path.exists():
+        raise FileNotFoundError(f"输入 CSV 不存在: {path}")
+    frame = pd.read_csv(path)
+    return frame.to_dict(orient="records")
 
 
 def load_feature_names(metadata_path: Path, model: Any) -> list[str]:
@@ -68,10 +98,10 @@ def normalize_records(payload: Any) -> list[dict[str, Any]]:
     raise ValueError("输入 JSON 必须是对象或对象数组")
 
 
-def risk_level(probability: float) -> str:
-    if probability < 0.33:
+def risk_level(probability: float, low_threshold: float, high_threshold: float) -> str:
+    if probability < low_threshold:
         return "low"
-    if probability < 0.66:
+    if probability < high_threshold:
         return "medium"
     return "high"
 
@@ -101,12 +131,24 @@ def build_feature_frame(records: list[dict[str, Any]], features: list[str]) -> p
     return frame[features]
 
 
-def build_output(records: list[dict[str, Any]], probabilities: np.ndarray) -> dict[str, Any]:
+def validate_thresholds(low_threshold: float, high_threshold: float) -> None:
+    if not (0.0 <= low_threshold <= 1.0 and 0.0 <= high_threshold <= 1.0):
+        raise ValueError("阈值必须在 [0, 1] 范围内")
+    if low_threshold >= high_threshold:
+        raise ValueError("low-threshold 必须小于 high-threshold")
+
+
+def build_output(
+    records: list[dict[str, Any]],
+    probabilities: np.ndarray,
+    low_threshold: float,
+    high_threshold: float,
+) -> dict[str, Any]:
     results: list[dict[str, Any]] = []
 
     for idx, proba in enumerate(probabilities):
         p = float(proba)
-        level = risk_level(p)
+        level = risk_level(p, low_threshold=low_threshold, high_threshold=high_threshold)
         results.append(
             {
                 "index": idx,
@@ -119,29 +161,73 @@ def build_output(records: list[dict[str, Any]], probabilities: np.ndarray) -> di
 
     return {
         "count": len(results),
+        "thresholds": {
+            "low_threshold": low_threshold,
+            "high_threshold": high_threshold,
+        },
         "results": results,
     }
+
+
+def build_csv_output(output: dict[str, Any]) -> pd.DataFrame:
+    rows = []
+    for item in output.get("results", []):
+        rows.append(
+            {
+                "index": item["index"],
+                "risk_probability": item["risk_probability"],
+                "risk_level": item["risk_level"],
+                "risk_message": item["risk_message"],
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def load_model_and_features(model_path: Path, metadata_path: Path) -> tuple[Any, list[str]]:
+    if not model_path.exists():
+        raise FileNotFoundError(f"模型文件不存在: {model_path}")
+    model = joblib.load(model_path)
+    features = load_feature_names(metadata_path, model)
+    return model, features
+
+
+def predict_from_records(
+    records: list[dict[str, Any]],
+    model: Any,
+    features: list[str],
+    low_threshold: float,
+    high_threshold: float,
+) -> dict[str, Any]:
+    validate_thresholds(low_threshold, high_threshold)
+    X = build_feature_frame(records, features)
+    probabilities = model.predict_proba(X)[:, 1]
+    return build_output(records, probabilities, low_threshold=low_threshold, high_threshold=high_threshold)
+
+
+def load_input_records(input_json: str | None, input_csv: str | None) -> list[dict[str, Any]]:
+    if input_json:
+        payload = load_json(Path(input_json))
+        return normalize_records(payload)
+    if input_csv:
+        return load_csv(Path(input_csv))
+    raise ValueError("必须提供 --input-json 或 --input-csv")
 
 
 def main() -> None:
     args = parse_args()
 
-    input_path = Path(args.input_json)
     model_path = Path(args.model_path)
     metadata_path = Path(args.metadata_path)
+    records = load_input_records(args.input_json, args.input_csv)
 
-    payload = load_json(input_path)
-    records = normalize_records(payload)
-
-    if not model_path.exists():
-        raise FileNotFoundError(f"模型文件不存在: {model_path}")
-
-    model = joblib.load(model_path)
-    features = load_feature_names(metadata_path, model)
-    X = build_feature_frame(records, features)
-
-    probabilities = model.predict_proba(X)[:, 1]
-    output = build_output(records, probabilities)
+    model, features = load_model_and_features(model_path, metadata_path)
+    output = predict_from_records(
+        records,
+        model=model,
+        features=features,
+        low_threshold=args.low_threshold,
+        high_threshold=args.high_threshold,
+    )
 
     output_text = json.dumps(output, ensure_ascii=False, indent=2)
     print(output_text)
@@ -151,6 +237,13 @@ def main() -> None:
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text(output_text, encoding="utf-8")
         print(f"\n预测结果已保存: {output_path}")
+
+    if args.output_csv:
+        output_csv_path = Path(args.output_csv)
+        output_csv_path.parent.mkdir(parents=True, exist_ok=True)
+        csv_frame = build_csv_output(output)
+        csv_frame.to_csv(output_csv_path, index=False)
+        print(f"预测结果 CSV 已保存: {output_csv_path}")
 
 
 if __name__ == "__main__":
