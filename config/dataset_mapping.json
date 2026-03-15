@@ -1,0 +1,59 @@
+{
+  "datasets": [
+    {
+      "name": "cardiovascular",
+      "input_file": "cardiovascular_disease.csv",
+      "output_file": "cardio_unified_cardiovascular.csv",
+      "mappings": {
+        "dataset_source": { "type": "constant", "value": "cardiovascular" },
+        "age": { "type": "column", "source": "age", "transform": "age_days_to_years" },
+        "sex": { "type": "column", "source": "gender", "transform": "gender_2_to_male_binary" },
+        "height_cm": { "type": "column", "source": "height", "transform": "to_numeric" },
+        "weight_kg": { "type": "column", "source": "weight", "transform": "to_numeric" },
+        "systolic_bp": { "type": "column", "source": "ap_hi", "transform": "to_numeric" },
+        "diastolic_bp": { "type": "column", "source": "ap_lo", "transform": "to_numeric" },
+        "cholesterol_level": { "type": "column", "source": "cholesterol", "transform": "to_numeric" },
+        "glucose_level": { "type": "column", "source": "gluc", "transform": "to_numeric" },
+        "smoker": { "type": "column", "source": "smoke", "transform": "binary" },
+        "alcohol": { "type": "column", "source": "alco", "transform": "binary" },
+        "active": { "type": "column", "source": "active", "transform": "binary" },
+        "target": { "type": "column", "source": "cardio", "transform": "binary" }
+      }
+    },
+    {
+      "name": "framingham",
+      "input_file": "framingham.csv",
+      "output_file": "cardio_unified_framingham.csv",
+      "mappings": {
+        "dataset_source": { "type": "constant", "value": "framingham" },
+        "age": { "type": "column", "source": "age", "transform": "to_numeric" },
+        "sex": { "type": "column", "source": "male", "transform": "binary" },
+        "bmi": { "type": "column", "source": "BMI", "transform": "to_numeric" },
+        "systolic_bp": { "type": "column", "source": "sysBP", "transform": "to_numeric" },
+        "diastolic_bp": { "type": "column", "source": "diaBP", "transform": "to_numeric" },
+        "total_cholesterol": { "type": "column", "source": "totChol", "transform": "to_numeric" },
+        "fasting_glucose": { "type": "column", "source": "glucose", "transform": "to_numeric" },
+        "heart_rate": { "type": "column", "source": "heartRate", "transform": "to_numeric" },
+        "smoker": { "type": "column", "source": "currentSmoker", "transform": "binary" },
+        "diabetes_history": { "type": "column", "source": "diabetes", "transform": "binary" },
+        "hypertension_history": { "type": "column", "source": "prevalentHyp", "transform": "binary" },
+        "target": { "type": "column", "source": "TenYearCHD", "transform": "binary" }
+      }
+    },
+    {
+      "name": "uci_cleveland",
+      "input_file": "heart_uci_cleveland.csv",
+      "output_file": "cardio_unified_uci.csv",
+      "mappings": {
+        "dataset_source": { "type": "constant", "value": "uci_cleveland" },
+        "age": { "type": "column", "source": "age", "transform": "to_numeric" },
+        "sex": { "type": "column", "source": "sex", "transform": "binary" },
+        "systolic_bp": { "type": "column", "source": "trestbps", "transform": "to_numeric" },
+        "total_cholesterol": { "type": "column", "source": "chol", "transform": "to_numeric" },
+        "glucose_level": { "type": "column", "source": "fbs", "transform": "binary" },
+        "heart_rate": { "type": "column", "source": "thalach", "transform": "to_numeric" },
+        "target": { "type": "column", "source": "target", "transform": "binary" }
+      }
+    }
+  ]
+}

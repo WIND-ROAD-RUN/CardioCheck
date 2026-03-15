@@ -1,6 +1,7 @@
 import argparse
 import json
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -34,6 +35,12 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="构建 CardioCheck 统一字段数据集")
     parser.add_argument("--raw-dir", type=str, default="data/raw", help="原始数据目录")
     parser.add_argument("--output-dir", type=str, default="data/processed", help="输出目录")
+    parser.add_argument(
+        "--mapping-config",
+        type=str,
+        default="config/dataset_mapping.json",
+        help="字段映射配置文件路径",
+    )
     return parser.parse_args()
 
 
@@ -41,79 +48,69 @@ def to_binary(series: pd.Series) -> pd.Series:
     return pd.to_numeric(series, errors="coerce").round().astype("Float64")
 
 
-def build_cardiovascular(df: pd.DataFrame) -> pd.DataFrame:
-    out = pd.DataFrame()
-    out["dataset_source"] = "cardiovascular"
-    # cardio_train 的 age 是天数。
-    out["age"] = pd.to_numeric(df.get("age"), errors="coerce") / 365.25
-    out["sex"] = (pd.to_numeric(df.get("gender"), errors="coerce") == 2).astype("Float64")
-    out["height_cm"] = pd.to_numeric(df.get("height"), errors="coerce")
-    out["weight_kg"] = pd.to_numeric(df.get("weight"), errors="coerce")
-    out["bmi"] = out["weight_kg"] / ((out["height_cm"] / 100.0) ** 2)
-    out["systolic_bp"] = pd.to_numeric(df.get("ap_hi"), errors="coerce")
-    out["diastolic_bp"] = pd.to_numeric(df.get("ap_lo"), errors="coerce")
-    out["total_cholesterol"] = np.nan
-    out["cholesterol_level"] = pd.to_numeric(df.get("cholesterol"), errors="coerce")
-    out["fasting_glucose"] = np.nan
-    out["glucose_level"] = pd.to_numeric(df.get("gluc"), errors="coerce")
-    out["heart_rate"] = np.nan
-    out["smoker"] = to_binary(df.get("smoke"))
-    out["alcohol"] = to_binary(df.get("alco"))
-    out["active"] = to_binary(df.get("active"))
-    out["diabetes_history"] = np.nan
-    out["hypertension_history"] = np.nan
-    out["family_history_cvd"] = np.nan
-    out["target"] = to_binary(df.get("cardio"))
-    return out
+def transform_identity(series: pd.Series) -> pd.Series:
+    return series
 
 
-def build_framingham(df: pd.DataFrame) -> pd.DataFrame:
-    out = pd.DataFrame()
-    out["dataset_source"] = "framingham"
-    out["age"] = pd.to_numeric(df.get("age"), errors="coerce")
-    out["sex"] = to_binary(df.get("male"))
-    out["height_cm"] = np.nan
-    out["weight_kg"] = np.nan
-    out["bmi"] = pd.to_numeric(df.get("BMI"), errors="coerce")
-    out["systolic_bp"] = pd.to_numeric(df.get("sysBP"), errors="coerce")
-    out["diastolic_bp"] = pd.to_numeric(df.get("diaBP"), errors="coerce")
-    out["total_cholesterol"] = pd.to_numeric(df.get("totChol"), errors="coerce")
-    out["cholesterol_level"] = np.nan
-    out["fasting_glucose"] = pd.to_numeric(df.get("glucose"), errors="coerce")
-    out["glucose_level"] = np.nan
-    out["heart_rate"] = pd.to_numeric(df.get("heartRate"), errors="coerce")
-    out["smoker"] = to_binary(df.get("currentSmoker"))
-    out["alcohol"] = np.nan
-    out["active"] = np.nan
-    out["diabetes_history"] = to_binary(df.get("diabetes"))
-    out["hypertension_history"] = to_binary(df.get("prevalentHyp"))
-    out["family_history_cvd"] = np.nan
-    out["target"] = to_binary(df.get("TenYearCHD"))
-    return out
+def transform_to_numeric(series: pd.Series) -> pd.Series:
+    return pd.to_numeric(series, errors="coerce")
 
 
-def build_uci(df: pd.DataFrame) -> pd.DataFrame:
-    out = pd.DataFrame()
-    out["dataset_source"] = "uci_cleveland"
-    out["age"] = pd.to_numeric(df.get("age"), errors="coerce")
-    out["sex"] = to_binary(df.get("sex"))
-    out["height_cm"] = np.nan
-    out["weight_kg"] = np.nan
-    out["bmi"] = np.nan
-    out["systolic_bp"] = pd.to_numeric(df.get("trestbps"), errors="coerce")
-    out["diastolic_bp"] = np.nan
-    out["total_cholesterol"] = pd.to_numeric(df.get("chol"), errors="coerce")
-    out["cholesterol_level"] = np.nan
-    out["fasting_glucose"] = np.nan
-    out["glucose_level"] = to_binary(df.get("fbs"))
-    out["heart_rate"] = pd.to_numeric(df.get("thalach"), errors="coerce")
-    out["smoker"] = np.nan
-    out["alcohol"] = np.nan
-    out["active"] = np.nan
-    out["diabetes_history"] = np.nan
-    out["hypertension_history"] = np.nan
-    out["family_history_cvd"] = np.nan
-    out["target"] = to_binary(df.get("target"))
+def transform_age_days_to_years(series: pd.Series) -> pd.Series:
+    return pd.to_numeric(series, errors="coerce") / 365.25
+
+
+def transform_gender_2_to_male_binary(series: pd.Series) -> pd.Series:
+    return (pd.to_numeric(series, errors="coerce") == 2).astype("Float64")
+
+
+TRANSFORMS = {
+    "identity": transform_identity,
+    "to_numeric": transform_to_numeric,
+    "binary": to_binary,
+    "age_days_to_years": transform_age_days_to_years,
+    "gender_2_to_male_binary": transform_gender_2_to_male_binary,
+}
+
+
+def load_mapping_config(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        raise FileNotFoundError(f"映射配置不存在: {path}")
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def apply_rule(raw_df: pd.DataFrame, rule: dict[str, Any]) -> pd.Series | Any:
+    rule_type = rule.get("type")
+    if rule_type == "constant":
+        return rule.get("value", np.nan)
+
+    if rule_type == "column":
+        source_col = rule.get("source")
+        if not source_col:
+            return np.nan
+        series = raw_df[source_col] if source_col in raw_df.columns else pd.Series(np.nan, index=raw_df.index)
+        transform_name = rule.get("transform", "identity")
+        transform_fn = TRANSFORMS.get(transform_name)
+        if transform_fn is None:
+            raise ValueError(f"不支持的 transform: {transform_name}")
+        return transform_fn(series)
+
+    raise ValueError(f"不支持的 rule type: {rule_type}")
+
+
+def build_from_mapping(raw_df: pd.DataFrame, dataset_cfg: dict[str, Any]) -> pd.DataFrame:
+    out = pd.DataFrame(index=raw_df.index)
+    mappings: dict[str, dict[str, Any]] = dataset_cfg.get("mappings", {})
+
+    for target_col in UNIFIED_COLUMNS:
+        rule = mappings.get(target_col)
+        if not rule:
+            out[target_col] = np.nan
+            continue
+
+        result = apply_rule(raw_df, rule)
+        out[target_col] = result
+
     return out
 
 
@@ -170,42 +167,44 @@ def main() -> None:
     args = parse_args()
     raw_dir = Path(args.raw_dir)
     output_dir = Path(args.output_dir)
+    mapping_config_path = Path(args.mapping_config)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    cardio_raw = pd.read_csv(raw_dir / "cardiovascular_disease.csv")
-    framingham_raw = pd.read_csv(raw_dir / "framingham.csv")
-    uci_raw = pd.read_csv(raw_dir / "heart_uci_cleveland.csv")
+    config = load_mapping_config(mapping_config_path)
+    datasets_cfg: list[dict[str, Any]] = config.get("datasets", [])
+    if not datasets_cfg:
+        raise ValueError("映射配置中未找到 datasets 定义")
 
-    cardio = basic_cleaning(ensure_columns(build_cardiovascular(cardio_raw)))
-    framingham = basic_cleaning(ensure_columns(build_framingham(framingham_raw)))
-    uci = basic_cleaning(ensure_columns(build_uci(uci_raw)))
+    unified_frames: dict[str, pd.DataFrame] = {}
+    output_files: dict[str, str] = {}
 
-    merged = pd.concat([cardio, framingham, uci], ignore_index=True)
+    for dataset_cfg in datasets_cfg:
+        dataset_name = str(dataset_cfg.get("name", "unknown"))
+        input_file = dataset_cfg.get("input_file")
+        output_file = dataset_cfg.get("output_file")
+        if not input_file or not output_file:
+            raise ValueError(f"数据集配置缺少 input_file/output_file: {dataset_name}")
 
-    save_dataset(cardio, output_dir / "cardio_unified_cardiovascular.csv")
-    save_dataset(framingham, output_dir / "cardio_unified_framingham.csv")
-    save_dataset(uci, output_dir / "cardio_unified_uci.csv")
-    save_dataset(merged, output_dir / "cardio_unified_merged.csv")
+        raw_df = pd.read_csv(raw_dir / input_file)
+        unified_df = build_from_mapping(raw_df, dataset_cfg)
+        cleaned_df = basic_cleaning(ensure_columns(unified_df))
+        unified_frames[dataset_name] = cleaned_df
+
+        output_path = output_dir / output_file
+        save_dataset(cleaned_df, output_path)
+        output_files[dataset_name] = str(output_path)
+
+    merged = pd.concat(list(unified_frames.values()), ignore_index=True)
+    merged_path = output_dir / "cardio_unified_merged.csv"
+    save_dataset(merged, merged_path)
+    output_files["merged"] = str(merged_path)
 
     profile = {
-        "output_files": {
-            "cardiovascular": str(output_dir / "cardio_unified_cardiovascular.csv"),
-            "framingham": str(output_dir / "cardio_unified_framingham.csv"),
-            "uci": str(output_dir / "cardio_unified_uci.csv"),
-            "merged": str(output_dir / "cardio_unified_merged.csv"),
-        },
-        "row_count": {
-            "cardiovascular": int(len(cardio)),
-            "framingham": int(len(framingham)),
-            "uci": int(len(uci)),
-            "merged": int(len(merged)),
-        },
-        "target_rate": {
-            "cardiovascular": float(cardio["target"].mean()),
-            "framingham": float(framingham["target"].mean()),
-            "uci": float(uci["target"].mean()),
-            "merged": float(merged["target"].mean()),
-        },
+        "mapping_config": str(mapping_config_path),
+        "output_files": output_files,
+        "row_count": {name: int(len(df)) for name, df in unified_frames.items()} | {"merged": int(len(merged))},
+        "target_rate": {name: float(df["target"].mean()) for name, df in unified_frames.items()}
+        | {"merged": float(merged["target"].mean())},
         "columns": UNIFIED_COLUMNS,
     }
 
@@ -213,7 +212,8 @@ def main() -> None:
     profile_path.write_text(json.dumps(profile, indent=2, ensure_ascii=False), encoding="utf-8")
 
     print("统一字段数据已生成:")
-    print(f"- merged: {output_dir / 'cardio_unified_merged.csv'}")
+    for name, path in output_files.items():
+        print(f"- {name}: {path}")
     print(f"- profile: {profile_path}")
 
 
