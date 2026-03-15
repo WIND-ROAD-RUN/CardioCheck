@@ -1,0 +1,15 @@
+{
+  "age": 46,
+  "sex": 1,
+  "systolic_bp": 145,
+  "diastolic_bp": 92,
+  "bmi": 28.4,
+  "total_cholesterol": 230,
+  "fasting_glucose": 108,
+  "smoker": 1,
+  "alcohol": 0,
+  "active": 0,
+  "diabetes_history": 0,
+  "hypertension_history": 1,
+  "dataset_source": "user_input"
+}
