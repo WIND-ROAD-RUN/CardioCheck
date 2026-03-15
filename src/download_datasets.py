@@ -45,6 +45,10 @@ OPENML_NAME_CANDIDATES = {
     ],
 }
 
+FRAMINGHAM_FALLBACK_URLS = [
+    "https://raw.githubusercontent.com/GauravPadawe/Framingham-Heart-Study/master/framingham.csv",
+]
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="下载 CardioCheck 原型所需数据集")
@@ -69,7 +73,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--framingham-url",
         type=str,
-        default=None,
+        default="https://raw.githubusercontent.com/GauravPadawe/Framingham-Heart-Study/master/framingham.csv",
         help="Framingham 数据集的 CSV 镜像地址，可覆盖自动检索",
     )
     parser.add_argument(
@@ -115,7 +119,16 @@ def download_uci_cleveland(output_dir: Path, timeout: int) -> dict:
 
 def fetch_csv_from_url(url: str, output_path: Path, timeout: int) -> dict:
     raw_text = request_text(url, timeout)
-    df = pd.read_csv(io.StringIO(raw_text), sep=None, engine="python")
+    raw_text = raw_text.lstrip("\ufeff")
+    try:
+        df = pd.read_csv(io.StringIO(raw_text), sep=",")
+    except Exception:
+        df = pd.read_csv(
+            io.StringIO(raw_text),
+            sep=",",
+            engine="python",
+            on_bad_lines="skip",
+        )
     save_dataframe(df, output_path)
     return {
         "rows": int(len(df)),
@@ -193,7 +206,22 @@ def download_framingham(output_dir: Path, timeout: int, source_url: str | None) 
         result = fetch_csv_from_url(source_url, output_path, timeout)
         result["dataset"] = "framingham"
         return result
-    return download_openml_dataset("framingham", "framingham.csv", output_dir, timeout)
+
+    try:
+        return download_openml_dataset("framingham", "framingham.csv", output_dir, timeout)
+    except Exception:
+        for fallback_url in FRAMINGHAM_FALLBACK_URLS:
+            try:
+                result = fetch_csv_from_url(fallback_url, output_path, timeout)
+                result["dataset"] = "framingham"
+                return result
+            except Exception:
+                continue
+
+    raise RuntimeError(
+        "无法通过 OpenML 或默认镜像下载 framingham。"
+        "请使用 --framingham-url 传入可下载的 CSV 地址。"
+    )
 
 
 def download_cardiovascular(output_dir: Path, timeout: int, source_url: str | None) -> dict:
