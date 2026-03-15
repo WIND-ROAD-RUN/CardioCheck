@@ -1,5 +1,6 @@
 import argparse
 from pathlib import Path
+from typing import Any
 
 from flask import Flask, jsonify, render_template, request
 
@@ -31,6 +32,50 @@ def create_app(
     app = Flask(__name__, template_folder="templates", static_folder="static")
     model, features = load_model_and_features(model_path=model_path, metadata_path=metadata_path)
 
+    def validate_record(payload: dict[str, Any]) -> list[str]:
+        errors: list[str] = []
+
+        def as_float(key: str) -> float | None:
+            value = payload.get(key)
+            if value is None or value == "":
+                return None
+            try:
+                return float(value)
+            except (TypeError, ValueError):
+                errors.append(f"{key} 必须是数值")
+                return None
+
+        age = as_float("age")
+        sex = as_float("sex")
+        sbp = as_float("systolic_bp")
+        dbp = as_float("diastolic_bp")
+        bmi = as_float("bmi")
+
+        if age is not None and not (18 <= age <= 100):
+            errors.append("age 需在 18 到 100 之间")
+        if sex is not None and sex not in (0.0, 1.0):
+            errors.append("sex 仅支持 0 或 1")
+        if sbp is not None and not (70 <= sbp <= 260):
+            errors.append("systolic_bp 建议在 70 到 260 之间")
+        if dbp is not None and not (40 <= dbp <= 180):
+            errors.append("diastolic_bp 建议在 40 到 180 之间")
+        if bmi is not None and not (12 <= bmi <= 70):
+            errors.append("bmi 建议在 12 到 70 之间")
+
+        for binary_key in ["smoker", "alcohol", "active", "diabetes_history", "hypertension_history"]:
+            val = as_float(binary_key)
+            if val is not None and val not in (0.0, 1.0):
+                errors.append(f"{binary_key} 仅支持 0 或 1")
+
+        if payload.get("age") is None:
+            errors.append("age 为必填项")
+        if payload.get("sex") is None:
+            errors.append("sex 为必填项")
+        if payload.get("systolic_bp") is None:
+            errors.append("systolic_bp 为必填项")
+
+        return errors
+
     @app.get("/")
     def index():
         return render_template(
@@ -45,6 +90,10 @@ def create_app(
         if not isinstance(payload, dict):
             return jsonify({"error": "请求体必须是 JSON 对象"}), 400
 
+        errors = validate_record(payload)
+        if errors:
+            return jsonify({"error": "输入校验失败", "details": errors}), 400
+
         try:
             output = predict_from_records(
                 [payload],
@@ -57,6 +106,34 @@ def create_app(
             return jsonify({"error": str(exc)}), 400
 
         return jsonify(output["results"][0])
+
+    @app.post("/api/predict-batch")
+    def api_predict_batch():
+        payload = request.get_json(silent=True)
+        if not isinstance(payload, list) or not all(isinstance(item, dict) for item in payload):
+            return jsonify({"error": "请求体必须是 JSON 对象数组"}), 400
+
+        all_errors: list[dict[str, Any]] = []
+        for idx, item in enumerate(payload):
+            errors = validate_record(item)
+            if errors:
+                all_errors.append({"index": idx, "errors": errors})
+
+        if all_errors:
+            return jsonify({"error": "批量输入校验失败", "details": all_errors}), 400
+
+        try:
+            output = predict_from_records(
+                payload,
+                model=model,
+                features=features,
+                low_threshold=low_threshold,
+                high_threshold=high_threshold,
+            )
+        except Exception as exc:
+            return jsonify({"error": str(exc)}), 400
+
+        return jsonify(output)
 
     return app
 

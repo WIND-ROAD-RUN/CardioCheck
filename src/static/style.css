@@ -210,6 +210,22 @@ h2 {
   font-weight: 600;
 }
 
+.hidden {
+  display: none;
+}
+
+.factor-title {
+  margin: 14px 0 8px;
+  font-size: 16px;
+  color: #16395a;
+}
+
+.factor-list {
+  margin: 0;
+  padding-left: 18px;
+  color: #27435b;
+}
+
 @keyframes rise {
   from {
     opacity: 0;

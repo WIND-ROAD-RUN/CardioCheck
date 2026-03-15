@@ -37,6 +37,7 @@
           <label>糖尿病史(1/0)<input name="diabetes_history" type="number" min="0" max="1" step="1"></label>
           <label>高血压史(1/0)<input name="hypertension_history" type="number" min="0" max="1" step="1"></label>
         </div>
+        <p id="form-error" class="error hidden"></p>
         <button type="submit" id="submit-btn">立即评估</button>
       </form>
     </section>
@@ -53,6 +54,7 @@
     const resultCard = document.getElementById('result-card');
     const resultContent = document.getElementById('result-content');
     const submitBtn = document.getElementById('submit-btn');
+    const formError = document.getElementById('form-error');
 
     function parseValue(v) {
       if (v === '' || v === null || v === undefined) return null;
@@ -66,8 +68,39 @@
       return '高风险';
     }
 
+    function validatePayload(payload) {
+      const errors = [];
+      const inRange = (v, min, max) => v >= min && v <= max;
+
+      if (payload.age === undefined || !inRange(payload.age, 18, 100)) {
+        errors.push('年龄需在 18 到 100 之间');
+      }
+      if (payload.sex === undefined || ![0, 1].includes(payload.sex)) {
+        errors.push('性别仅支持 0 或 1');
+      }
+      if (payload.systolic_bp === undefined || !inRange(payload.systolic_bp, 70, 260)) {
+        errors.push('收缩压建议在 70 到 260 之间');
+      }
+      if (payload.diastolic_bp !== undefined && !inRange(payload.diastolic_bp, 40, 180)) {
+        errors.push('舒张压建议在 40 到 180 之间');
+      }
+      if (payload.bmi !== undefined && !inRange(payload.bmi, 12, 70)) {
+        errors.push('BMI 建议在 12 到 70 之间');
+      }
+
+      for (const key of ['smoker', 'alcohol', 'active', 'diabetes_history', 'hypertension_history']) {
+        if (payload[key] !== undefined && ![0, 1].includes(payload[key])) {
+          errors.push(`${key} 仅支持 0 或 1`);
+        }
+      }
+
+      return errors;
+    }
+
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
+      formError.classList.add('hidden');
+      formError.textContent = '';
       submitBtn.disabled = true;
       submitBtn.textContent = '评估中...';
 
@@ -79,6 +112,15 @@
       }
       payload.dataset_source = 'user_input';
 
+      const localErrors = validatePayload(payload);
+      if (localErrors.length) {
+        formError.classList.remove('hidden');
+        formError.textContent = localErrors[0];
+        submitBtn.disabled = false;
+        submitBtn.textContent = '立即评估';
+        return;
+      }
+
       try {
         const res = await fetch('/api/predict', {
           method: 'POST',
@@ -87,15 +129,20 @@
         });
         const data = await res.json();
         if (!res.ok) {
-          throw new Error(data.error || '预测失败');
+          const detail = Array.isArray(data.details) ? `（${data.details[0]}）` : '';
+          throw new Error((data.error || '预测失败') + detail);
         }
 
         const pct = (data.risk_probability * 100).toFixed(2);
+        const factors = Array.isArray(data.risk_factors) ? data.risk_factors : [];
+        const factorsHtml = factors.map((item) => `<li>${item}</li>`).join('');
         resultCard.classList.add('visible');
         resultContent.innerHTML = `
           <div class="level level-${data.risk_level}">${levelText(data.risk_level)}</div>
           <div class="score">风险概率 <strong>${pct}%</strong></div>
           <p class="advice">${data.risk_message}</p>
+          <h3 class="factor-title">关键风险因素</h3>
+          <ul class="factor-list">${factorsHtml}</ul>
         `;
       } catch (err) {
         resultCard.classList.add('visible');

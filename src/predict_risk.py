@@ -114,6 +114,59 @@ def risk_message(level: str) -> str:
     return "高风险：建议尽快进行专业心血管评估与医生随访。"
 
 
+def to_float_or_none(value: Any) -> float | None:
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def derive_risk_factors(record: dict[str, Any]) -> list[str]:
+    factors: list[str] = []
+
+    age = to_float_or_none(record.get("age"))
+    sbp = to_float_or_none(record.get("systolic_bp"))
+    dbp = to_float_or_none(record.get("diastolic_bp"))
+    bmi = to_float_or_none(record.get("bmi"))
+    chol = to_float_or_none(record.get("total_cholesterol"))
+    glu = to_float_or_none(record.get("fasting_glucose"))
+    smoker = to_float_or_none(record.get("smoker"))
+    alcohol = to_float_or_none(record.get("alcohol"))
+    active = to_float_or_none(record.get("active"))
+    diabetes = to_float_or_none(record.get("diabetes_history"))
+    hyper = to_float_or_none(record.get("hypertension_history"))
+
+    if age is not None and age >= 55:
+        factors.append("年龄偏高")
+    if sbp is not None and sbp >= 140:
+        factors.append("收缩压偏高")
+    if dbp is not None and dbp >= 90:
+        factors.append("舒张压偏高")
+    if bmi is not None and bmi >= 28:
+        factors.append("BMI 偏高")
+    if chol is not None and chol >= 240:
+        factors.append("总胆固醇偏高")
+    if glu is not None and glu >= 126:
+        factors.append("空腹血糖偏高")
+    if smoker == 1:
+        factors.append("存在吸烟行为")
+    if alcohol == 1:
+        factors.append("存在饮酒行为")
+    if active == 0:
+        factors.append("运动不足")
+    if diabetes == 1:
+        factors.append("既往糖尿病史")
+    if hyper == 1:
+        factors.append("既往高血压史")
+
+    if not factors:
+        factors.append("未检出显著高风险输入特征")
+
+    return factors
+
+
 def build_feature_frame(records: list[dict[str, Any]], features: list[str]) -> pd.DataFrame:
     normalized_rows: list[dict[str, Any]] = []
 
@@ -155,6 +208,7 @@ def build_output(
                 "risk_probability": round(p, 6),
                 "risk_level": level,
                 "risk_message": risk_message(level),
+                "risk_factors": derive_risk_factors(records[idx]),
                 "input": records[idx],
             }
         )
